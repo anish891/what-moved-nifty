@@ -1,0 +1,8 @@
+pandas>=2.2
+numpy>=2.0
+statsmodels>=0.14
+yfinance>=0.2.50
+pandas-datareader>=0.10
+requests>=2.32
+neo4j>=5.26
+python-dotenv>=1.0

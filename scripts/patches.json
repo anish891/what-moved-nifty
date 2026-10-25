@@ -1,0 +1,12 @@
+{
+  "_doc": "Hand patches for sessions missing from Yahoo (weekend Budget-day trading). Each value needs a source.",
+  "nifty_close": {
+    "2026-02-01": {
+      "close": 24825.45,
+      "source": "https://ianslive.in/sensex-nifty-sink-nearly-2-pc-as-stt-hike-triggers-sell-off--20260201155729"
+    }
+  },
+  "exclude_events": {
+    "budget-2020-ddt-abolished": "Saturday 2020-02-01 session missing from Yahoo and no sourced Nifty close; excluded rather than misattributed to the following Monday."
+  }
+}

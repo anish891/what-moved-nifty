@@ -1,0 +1,22 @@
+# deps / build
+node_modules
+.next
+out
+next-env.d.ts
+*.tsbuildinfo
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# raw data dumps (never committed; processed JSON in public/data is)
+data/raw/
+
+# python
+.venv
+__pycache__
+*.pyc
+
+.DS_Store
+.vercel
