@@ -1,9 +1,17 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const SITE = "https://what-moved-nifty.vercel.app";
+const TITLE = "What Moved NIFTY";
+const DESC =
+  "A 3D map of 70 market shocks since 2021. Cut an event and watch NIFTY's counterfactual path redraw. Estimates, not proof.";
+
 export const metadata: Metadata = {
-  title: "What Moved NIFTY",
-  description: "Cut an event. Watch NIFTY's counterfactual path redraw.",
+  metadataBase: new URL(SITE),
+  title: TITLE,
+  description: DESC,
+  openGraph: { title: TITLE, description: DESC, url: SITE, siteName: TITLE, type: "website", locale: "en_IN" },
+  twitter: { card: "summary_large_image", title: TITLE, description: DESC },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
