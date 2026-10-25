@@ -53,7 +53,7 @@ export default function Methodology() {
 
       <H>Data</H>
       <p className="mt-2">
-        Prices: NSE indices, EEM, Brent, USD/INR, India VIX, S&amp;P 500, Nasdaq, SOX, TAIEX and KOSPI via Yahoo Finance; US 10Y yield from FRED.
+        The published range is January 2021 to today (earlier data is used only to fit the model). The latest days come from a live Yahoo Finance feed (refreshed about once a minute while the market is open); if that is unavailable the page shows the static series. Events are curated by hand, so very recent news may not be listed yet. Prices: NSE indices, EEM, Brent, USD/INR, India VIX, S&amp;P 500, Nasdaq, SOX, TAIEX and KOSPI via Yahoo Finance; US 10Y yield from FRED.
         Events and facts come from the news and official pages linked on each event; most sources are press reports and a
         few are marked secondary. FPI and DII flow series are not yet included.
       </p>

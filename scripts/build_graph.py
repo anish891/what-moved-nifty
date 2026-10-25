@@ -26,6 +26,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
 OUT = ROOT / "public" / "data"
+START = "2021-01-01"  # published range
 SECTORS = ["it", "bank", "auto", "fmcg", "metal", "pharma", "realty", "psubank"]
 CAP = 3
 
@@ -69,7 +70,8 @@ def main() -> None:
     drivers_stat = json.loads((OUT / "drivers.json").read_text())
     nifty_idx = pd.DatetimeIndex(pd.read_csv(RAW / "nifty50.csv", index_col=0, parse_dates=True).index)
 
-    ev = [e for e in events if e["id"] in impacts]
+    ev = [e for e in events if e["id"] in impacts and e["date"] >= START]
+    impacts = {e["id"]: impacts[e["id"]] for e in ev}
     nodes = [{"id": "NIFTY", "kind": "index", "label": "NIFTY 50"}]
     for k, (label, _, _) in DRIVERS.items():
         nodes.append({"id": f"driver:{k}", "kind": "driver", "label": label})

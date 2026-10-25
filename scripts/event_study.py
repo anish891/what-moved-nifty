@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
 OUT = ROOT / "public" / "data"
 EST_LEN, EST_GAP = 250, 10
+START = "2021-01-01"  # published range; earlier data is still used for estimation windows
 WINDOWS = {"1d": (0, 0), "5d": (-1, 5), "20d": (-1, 20), "60d": (0, 60)}
 SECTORS = ["nifty_it", "nifty_bank", "nifty_auto", "nifty_fmcg", "nifty_metal",
            "nifty_pharma", "nifty_realty", "nifty_psubank"]
@@ -193,7 +194,7 @@ def main():
     (OUT / "impacts.json").write_text(json.dumps(impacts, indent=1))
 
     # nifty.json (2020-01-01 on)
-    nf = nifty["2020-01-01":]
+    nf = nifty[START:]
     (OUT / "nifty.json").write_text(json.dumps([{"d": str(d.date()), "c": round(float(v), 2)} for d, v in nf.items()]))
 
     # drivers: rolling 60d correlation of Nifty returns with each driver
@@ -205,7 +206,7 @@ def main():
     drv = {k: v.reindex(v.index.union(idx)).ffill().reindex(idx).diff() for k, v in lvl.items()}
     d_out = {}
     for name, s in drv.items():
-        roll = ret.rolling(60).corr(s)
+        roll = ret.rolling(60).corr(s)[START:]
         yr = roll.groupby(roll.index.year).mean()
         d_out[name] = {"rho_60d_avg": float(roll.mean()),
                        "by_year": {str(k): round(float(v), 3) for k, v in yr.items() if pd.notna(v)},

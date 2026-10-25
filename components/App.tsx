@@ -11,8 +11,9 @@ import type { NebulaHandle, Quality } from "./Nebula";
 import { CATEGORIES, CATEGORY_KEYS, GROUPS } from "@/lib/categories";
 import { computeCounterfactual, summarize } from "@/lib/counterfactual";
 import { loadData } from "@/lib/data";
+import { mergeLive, type LiveQuote } from "@/lib/live";
 import { renderShareImage } from "@/lib/share";
-import type { AppData, Category } from "@/lib/types";
+import type { AppData, Category, NiftyPoint } from "@/lib/types";
 
 const Nebula = dynamic(() => import("./Nebula"), { ssr: false });
 const Fallback2D = dynamic(() => import("./Fallback2D"), { ssr: false });
@@ -44,6 +45,9 @@ export default function App() {
   const [autoLow, setAutoLow] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const [livePts, setLivePts] = useState<NiftyPoint[]>([]);
+  const [quote, setQuote] = useState<LiveQuote | null>(null);
+  const prevLen = useRef(0);
   const stage = useRef<HTMLDivElement>(null);
   const nebula = useRef<NebulaHandle>(null);
 
@@ -68,6 +72,44 @@ export default function App() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [data]);
+
+  const nifty = useMemo(() => (data ? mergeLive(data.nifty, livePts) : []), [data, livePts]);
+
+  // live NIFTY: fetch now and every 60 s while the tab is visible; failures keep the static series
+  useEffect(() => {
+    if (!data) return;
+    let stop = false;
+    const pull = async () => {
+      if (document.hidden) return;
+      try {
+        const r = await fetch("/api/nifty");
+        const j = (await r.json()) as { points: NiftyPoint[]; quote: LiveQuote | null };
+        if (!stop && j.points.length) {
+          setLivePts(j.points);
+          setQuote(j.quote);
+        }
+      } catch {
+        /* offline: keep static data */
+      }
+    };
+    pull();
+    const t = setInterval(pull, 60_000);
+    const vis = () => !document.hidden && pull();
+    document.addEventListener("visibilitychange", vis);
+    return () => {
+      stop = true;
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", vis);
+    };
+  }, [data]);
+
+  // when new candles arrive and the scrubber was parked at "now", keep following "now"
+  useEffect(() => {
+    if (nifty.length && prevLen.current && nifty.length !== prevLen.current) {
+      setScrubIdx((i) => (i === prevLen.current - 1 ? nifty.length - 1 : i));
+    }
+    prevLen.current = nifty.length;
+  }, [nifty.length]);
 
   // shareable URL
   useEffect(() => {
@@ -107,19 +149,19 @@ export default function App() {
     if (!playing || !data) return;
     const t = setInterval(() => {
       setScrubIdx((i) => {
-        if (i >= data.nifty.length - 1) {
+        if (i >= nifty.length - 1) {
           setPlaying(false);
           return i;
         }
-        return Math.min(i + 6, data.nifty.length - 1);
+        return Math.min(i + 6, nifty.length - 1);
       });
     }, 40);
     return () => clearInterval(t);
-  }, [playing, data]);
+  }, [playing, data, nifty.length]);
 
-  const points = useMemo(() => (data ? computeCounterfactual(data.nifty, data.impacts, cut) : []), [data, cut]);
+  const points = useMemo(() => (data ? computeCounterfactual(nifty, data.impacts, cut) : []), [data, nifty, cut]);
   const stat = useMemo(() => summarize(points), [points]);
-  const scrub = data && scrubIdx >= 0 ? data.nifty[scrubIdx].d : "9999-12-31";
+  const scrub = nifty.length && scrubIdx >= 0 ? nifty[Math.min(scrubIdx, nifty.length - 1)].d : "9999-12-31";
   const eventDates = useMemo(
     () => (data ? data.events.filter((e) => data.impacts[e.id]).map((e) => e.date).sort() : []),
     [data],
@@ -134,11 +176,11 @@ export default function App() {
     return last;
   }, [eventDates, scrub]);
   const scrubFrac = useMemo(() => {
-    if (!data || scrubIdx < 0) return 1;
-    const t0 = Date.parse(data.nifty[0].d);
-    const t1 = Date.parse(data.nifty[data.nifty.length - 1].d);
-    return (Date.parse(data.nifty[scrubIdx].d) - t0) / (t1 - t0);
-  }, [data, scrubIdx]);
+    if (!nifty.length || scrubIdx < 0) return 1;
+    const t0 = Date.parse(nifty[0].d);
+    const t1 = Date.parse(nifty[nifty.length - 1].d);
+    return (Date.parse(nifty[Math.min(scrubIdx, nifty.length - 1)].d) - t0) / (t1 - t0);
+  }, [nifty, scrubIdx]);
   const onAutoLow = useCallback(() => setAutoLow(true), []);
   const effQuality: Quality = autoLow && quality === "auto" ? "low" : quality;
 
@@ -303,6 +345,7 @@ export default function App() {
           </div>
         )}
         {nCut > 0 && stat && <div className="text-[11px] text-zinc-500">vs actual {Math.round(stat.actual).toLocaleString()} · estimate, 95% band</div>}
+        <LiveBadge quote={quote} last={nifty[nifty.length - 1]} />
       </div>
 
       {/* right panel */}
@@ -330,13 +373,13 @@ export default function App() {
         style={{ ["--drawer" as string]: drawer ? (mobile ? "212px" : "262px") : "40px" }}
       >
         <div className="flex items-center gap-2">
-          <button onClick={() => { if (scrubIdx >= data.nifty.length - 1) setScrubIdx(0); setPlaying((p) => !p); }} className="w-12 rounded bg-zinc-800 px-1 py-0.5 text-xs">
+          <button onClick={() => { if (scrubIdx >= nifty.length - 1) setScrubIdx(0); setPlaying((p) => !p); }} className="w-12 rounded bg-zinc-800 px-1 py-0.5 text-xs">
             {playing ? "Pause" : "Play"}
           </button>
           <input
             type="range"
             min={0}
-            max={data.nifty.length - 1}
+            max={nifty.length - 1}
             value={Math.max(scrubIdx, 0)}
             onChange={(e) => { setPlaying(false); setScrubIdx(+e.target.value); }}
             className="flex-1 accent-cyan-400"
@@ -372,4 +415,26 @@ function history_replace(u: URL) {
   } catch {
     /* ignore */
   }
+}
+
+function LiveBadge({ quote, last }: { quote: LiveQuote | null; last?: NiftyPoint }) {
+  if (!last) return null;
+  if (quote?.live) {
+    const t = new Date(quote.time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
+    return (
+      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-emerald-300">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+        </span>
+        LIVE · updated {t} IST
+      </div>
+    );
+  }
+  return (
+    <div className="mt-0.5 text-[11px] text-zinc-500">
+      Market closed · last close {last.d}
+      {quote ? "" : " · live feed unavailable"}
+    </div>
+  );
 }

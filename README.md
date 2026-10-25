@@ -45,3 +45,10 @@ read-only session with a 5 s timeout, and is CDN-cached for an hour. If Neo4j is
 `{"source":"static"}` and the client falls back.
 
 `FRED_API_KEY` in `.env.example` is currently unused (the FRED CSV endpoint needs no key).
+
+## Range and live data
+
+The published range is 2021-01-01 onward (`START` in `lib/data.ts`, `scripts/event_study.py`, `scripts/build_graph.py`).
+`/api/nifty` proxies Yahoo Finance's public chart endpoint (unofficial, no key, 60 s CDN cache); the app merges its
+candles onto `public/data/nifty.json` and polls every minute while the tab is visible. Events are not live: add new
+ones in `scripts/_gen/events_src.py`, then rerun the pipeline.
