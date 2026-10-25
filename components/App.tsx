@@ -3,11 +3,11 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Chart from "./Chart";
+import Chart, { CHART_LEFT, CHART_RIGHT } from "./Chart";
 import ExplorePanel from "./ExplorePanel";
 import Leaderboard from "./Leaderboard";
 import SidePanel from "./SidePanel";
-import type { NebulaHandle } from "./Nebula";
+import type { NebulaHandle, Quality } from "./Nebula";
 import { CATEGORIES, CATEGORY_KEYS, GROUPS } from "@/lib/categories";
 import { computeCounterfactual, summarize } from "@/lib/counterfactual";
 import { loadData } from "@/lib/data";
@@ -40,6 +40,9 @@ export default function App() {
   const [drawer, setDrawer] = useState(true);
   const [gl, setGl] = useState(true);
   const [mobile, setMobile] = useState(false);
+  const [quality, setQuality] = useState<Quality>("auto");
+  const [autoLow, setAutoLow] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const stage = useRef<HTMLDivElement>(null);
   const nebula = useRef<NebulaHandle>(null);
@@ -117,6 +120,27 @@ export default function App() {
   const points = useMemo(() => (data ? computeCounterfactual(data.nifty, data.impacts, cut) : []), [data, cut]);
   const stat = useMemo(() => summarize(points), [points]);
   const scrub = data && scrubIdx >= 0 ? data.nifty[scrubIdx].d : "9999-12-31";
+  const eventDates = useMemo(
+    () => (data ? data.events.filter((e) => data.impacts[e.id]).map((e) => e.date).sort() : []),
+    [data],
+  );
+  // latest event date already reached; only changes when the scrubber crosses an event, so the 3D scene is left alone in between
+  const visDate = useMemo(() => {
+    let last = "";
+    for (const d of eventDates) {
+      if (d <= scrub) last = d;
+      else break;
+    }
+    return last;
+  }, [eventDates, scrub]);
+  const scrubFrac = useMemo(() => {
+    if (!data || scrubIdx < 0) return 1;
+    const t0 = Date.parse(data.nifty[0].d);
+    const t1 = Date.parse(data.nifty[data.nifty.length - 1].d);
+    return (Date.parse(data.nifty[scrubIdx].d) - t0) / (t1 - t0);
+  }, [data, scrubIdx]);
+  const onAutoLow = useCallback(() => setAutoLow(true), []);
+  const effQuality: Quality = autoLow && quality === "auto" ? "low" : quality;
 
   const select = useCallback((id: string | null) => {
     setSelected(id);
@@ -173,10 +197,13 @@ export default function App() {
               apiRef={nebula}
               data={data}
               cut={cut}
-              scrub={scrub}
+              visDate={visDate}
               selected={selected}
               gap={gap}
               mobile={mobile}
+              quality={effQuality}
+              showAll={showAll}
+              onAutoLow={onAutoLow}
               onSelect={select}
               width={size.w}
               height={size.h}
@@ -201,6 +228,16 @@ export default function App() {
           </button>
           <button onClick={() => setPanel(panel === "explore" ? "none" : "explore")} className="rounded bg-zinc-800 px-2 py-0.5 text-xs">
             Explore
+          </button>
+          <button onClick={() => setShowAll((v) => !v)} className={`rounded px-2 py-0.5 text-xs ${showAll ? "bg-cyan-400 text-black" : "bg-zinc-800"}`} title="Draw every same-channel and co-moved connection (heavier)">
+            All links
+          </button>
+          <button
+            onClick={() => { setAutoLow(false); setQuality((q) => (q === "auto" ? "low" : q === "low" ? "high" : "auto")); }}
+            className="rounded bg-zinc-800 px-2 py-0.5 text-xs"
+            title="Rendering quality: Auto lowers it if the frame rate is poor"
+          >
+            Quality: {quality === "auto" ? (autoLow ? "Auto (low)" : "Auto") : quality === "low" ? "Low" : "High"}
           </button>
           <button onClick={share} className="rounded bg-zinc-800 px-2 py-0.5 text-xs">
             Share PNG
@@ -290,7 +327,7 @@ export default function App() {
       {/* bottom: scrubber + chart drawer */}
       <div
         className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black via-black/90 to-transparent px-3 pb-2 pt-6"
-        style={{ ["--drawer" as string]: drawer ? "262px" : "40px" }}
+        style={{ ["--drawer" as string]: drawer ? (mobile ? "212px" : "262px") : "40px" }}
       >
         <div className="flex items-center gap-2">
           <button onClick={() => { if (scrubIdx >= data.nifty.length - 1) setScrubIdx(0); setPlaying((p) => !p); }} className="w-12 rounded bg-zinc-800 px-1 py-0.5 text-xs">
@@ -311,8 +348,12 @@ export default function App() {
           </button>
         </div>
         {drawer && (
-          <div className="mt-1 h-[200px]">
-            <Chart points={points} cut={cut} impacts={data.impacts} scrub={scrub} />
+          <div className="relative mt-1 h-[150px] sm:h-[200px]">
+            <Chart points={points} cut={cut} impacts={data.impacts} />
+            <div
+              className="pointer-events-none absolute bottom-[18px] top-[6px] w-px border-l border-dashed border-zinc-400"
+              style={{ left: `calc(${CHART_LEFT}px + (100% - ${CHART_LEFT + CHART_RIGHT}px) * ${scrubFrac})` }}
+            />
           </div>
         )}
         <div className="mt-0.5 flex gap-4 text-[10px] text-zinc-500">
