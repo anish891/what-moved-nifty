@@ -17,6 +17,7 @@ data/raw/
 .venv
 __pycache__
 *.pyc
+DEPLOY.md
 
 .DS_Store
 .vercel
