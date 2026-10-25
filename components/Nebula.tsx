@@ -143,6 +143,8 @@ function NebulaImpl({
   const idleTimer = useRef<ReturnType<typeof setTimeout>>();
   const shards = useRef<{ pts: THREE.Points; vel: Float32Array; t0: number }[]>([]);
   const applyQ = useRef<(low: boolean) => void>(() => {});
+  const flashes = useRef(new Map<string, number>()); // node id -> start time (ignite pulse)
+  const prevVis = useRef(visDate);
   const fitted = useRef(false);
 
   const graph = useMemo(() => {
@@ -344,6 +346,17 @@ function NebulaImpl({
           // brighter when the counterfactual sits above reality
           if (halo) halo.material = spriteMat("#38bdf8", Math.round(Math.min(0.7, 0.25 + Math.abs(gapRef.current) * 3) * 20) / 20);
         }
+        if (flashes.current.size) {
+          for (const [id, st] of flashes.current) {
+            const n = nodesRef.current.find((x) => x.id === id);
+            const halo = n?.__threeObj?.getObjectByName("halo") as THREE.Sprite | undefined;
+            const age = (now - st) / 900;
+            if (!n || !halo || age >= 1) {
+              halo?.scale.setScalar(n ? n.r * 4 : 1);
+              flashes.current.delete(id);
+            } else halo.scale.setScalar(n.r * (4 + 9 * Math.sin(Math.PI * age)));
+          }
+        }
         shards.current = shards.current.filter((s) => {
           const age = (now - s.t0) / 1200;
           if (age >= 1) {
@@ -385,6 +398,16 @@ function NebulaImpl({
   useEffect(() => {
     applyQ.current(quality === "low");
   }, [quality]);
+
+  // pulse events as the scrubber ignites them
+  useEffect(() => {
+    const from = prevVis.current;
+    prevVis.current = visDate;
+    if (quality === "low" || visDate <= from) return;
+    const fresh = nodesRef.current.filter((n) => n.kind === "event" && n.date! > from && n.date! <= visDate && !cut.has(n.id));
+    if (fresh.length > 0 && fresh.length <= 8) fresh.forEach((n) => flashes.current.set(n.id, performance.now()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visDate]);
 
   // shatter newly cut nodes (skipped in low quality or for bulk cuts)
   useEffect(() => {

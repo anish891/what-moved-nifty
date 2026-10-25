@@ -145,6 +145,7 @@ export default function SidePanel({ data, id, cut, onToggleCut, onSelect, onClos
       >
         {imp.context ? "Context only: cannot be cut" : isCut ? "↺ RESTORE THIS EVENT" : "✂ CUT THIS EVENT"}
       </button>
+      <div className="text-center text-[10px] text-zinc-600"><kbd className="rounded bg-zinc-800 px-1">←</kbd> <kbd className="rounded bg-zinc-800 px-1">→</kbd> browse events · <kbd className="rounded bg-zinc-800 px-1">C</kbd> cut · <kbd className="rounded bg-zinc-800 px-1">Esc</kbd> close</div>
 
       <div className="text-xs">
         <a href={ev.source_url} target="_blank" rel="noreferrer" className="text-cyan-400 underline underline-offset-2">

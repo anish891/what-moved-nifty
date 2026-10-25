@@ -3,9 +3,11 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Chart, { CHART_LEFT, CHART_RIGHT } from "./Chart";
+import ChartPane from "./ChartPane";
 import ExplorePanel from "./ExplorePanel";
 import Leaderboard from "./Leaderboard";
+import ScenarioPanel from "./ScenarioPanel";
+import SearchPalette from "./SearchPalette";
 import SidePanel from "./SidePanel";
 import type { NebulaHandle, Quality } from "./Nebula";
 import { CATEGORIES, CATEGORY_KEYS, GROUPS } from "@/lib/categories";
@@ -13,12 +15,15 @@ import { computeCounterfactual, summarize } from "@/lib/counterfactual";
 import { loadData } from "@/lib/data";
 import { mergeLive, type LiveQuote } from "@/lib/live";
 import { renderShareImage } from "@/lib/share";
-import type { AppData, Category, NiftyPoint } from "@/lib/types";
+import { SCENARIOS } from "@/lib/scenarios";
+import { useTweenNumber, useTweenProgress } from "@/lib/useTween";
+import { pct } from "@/lib/categories";
+import type { AppData, Category, CounterfactualPoint, NiftyPoint } from "@/lib/types";
 
 const Nebula = dynamic(() => import("./Nebula"), { ssr: false });
 const Fallback2D = dynamic(() => import("./Fallback2D"), { ssr: false });
 
-type Panel = "none" | "details" | "board" | "explore";
+type Panel = "none" | "details" | "board" | "explore" | "scenarios";
 
 function webglOk(): boolean {
   try {
@@ -46,6 +51,10 @@ export default function App() {
   const [showAll, setShowAll] = useState(false);
   const [onlyMoving, setOnlyMoving] = useState(false);
   const [hint, setHint] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [scenario, setScenario] = useState<{ label: string; key: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [livePts, setLivePts] = useState<NiftyPoint[]>([]);
   const [quote, setQuote] = useState<LiveQuote | null>(null);
@@ -135,16 +144,8 @@ export default function App() {
       return h.slice(0, -1);
     });
   }, []);
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        undo();
-      }
-    };
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
-  }, [undo]);
+  // keyboard handler is registered after the helpers it needs (see below)
+
 
   // time scrubber playback
   useEffect(() => {
@@ -163,6 +164,36 @@ export default function App() {
 
   const points = useMemo(() => (data ? computeCounterfactual(nifty, data.impacts, cut) : []), [data, nifty, cut]);
   const stat = useMemo(() => summarize(points), [points]);
+  // animate the counter and morph the counterfactual line when the cut set changes
+  const cfShown = useTweenNumber(stat?.cf ?? 0);
+  const pctShown = useTweenNumber(stat?.pct ?? 0);
+  const pmShown = useTweenNumber(stat?.pm ?? 0);
+  const morph = useTweenProgress(points);
+  const lastShown = useRef<CounterfactualPoint[]>(points);
+  const shownPoints = useMemo(() => {
+    const from = lastShown.current;
+    let out = points;
+    if (morph < 1 && from !== points && from.length === points.length) {
+      out = points.map((p, i) => {
+        const f = from[i];
+        return { ...p, cf: f.cf + (p.cf - f.cf) * morph, low: f.low + (p.low - f.low) * morph, high: f.high + (p.high - f.high) * morph };
+      });
+    }
+    return out;
+  }, [points, morph]);
+  useEffect(() => {
+    if (morph >= 1) lastShown.current = points;
+  }, [morph, points]);
+  const contrib = useMemo(
+    () =>
+      data
+        ? [...cut]
+            .map((id) => ({ id, imp: data.impacts[id] }))
+            .filter((x) => x.imp && !x.imp.context)
+            .sort((a, b) => Math.abs(b.imp.car_5d) - Math.abs(a.imp.car_5d))
+        : [],
+    [cut, data],
+  );
   const scrub = nifty.length && scrubIdx >= 0 ? nifty[Math.min(scrubIdx, nifty.length - 1)].d : "9999-12-31";
   const eventDates = useMemo(
     () => (data ? data.events.filter((e) => data.impacts[e.id]).map((e) => e.date).sort() : []),
@@ -219,6 +250,75 @@ export default function App() {
     apply(n);
   };
 
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
+  }, []);
+
+  const cutKey = useMemo(() => [...cut].sort().join(","), [cut]);
+  const runScenario = useCallback(
+    (ids: string[], label: string) => {
+      apply(new Set(ids));
+      setScenario({ label, key: [...ids].sort().join(",") });
+      setHint(false);
+      setPanel("none");
+      setSelected(null);
+      showToast(`${label}: ${ids.length} events cut`);
+    },
+    [apply, showToast],
+  );
+
+  const browse = useMemo(
+    () =>
+      data
+        ? data.events
+            .filter((e) => data.impacts[e.id] && !data.impacts[e.id].context && (!onlyMoving || data.impacts[e.id].market_moving))
+            .map((e) => e.id)
+            .sort((a, b) => data.impacts[a].t0.localeCompare(data.impacts[b].t0) || a.localeCompare(b))
+        : [],
+    [data, onlyMoving],
+  );
+  const focusEvent = useCallback(
+    (id: string) => {
+      select(id);
+      setHint(false);
+      setSearchOpen(false);
+      setTimeout(() => nebula.current?.focus(id), 0);
+    },
+    [select],
+  );
+
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      } else if (!typing && e.key === "/") {
+        e.preventDefault();
+        setSearchOpen(true);
+      } else if (e.key === "Escape") {
+        if (searchOpen) setSearchOpen(false);
+        else if (panel !== "none") select(null), setPanel("none");
+      } else if (!typing && selected && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+        const i = browse.indexOf(selected);
+        if (i >= 0) {
+          e.preventDefault();
+          focusEvent(browse[(i + (e.key === "ArrowRight" ? 1 : -1) + browse.length) % browse.length]);
+        }
+      } else if (!typing && selected && e.key.toLowerCase() === "c" && !e.ctrlKey && !e.metaKey && data && !data.impacts[selected]?.context) {
+        toggle(selected);
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [undo, searchOpen, panel, selected, browse, focusEvent, toggle, select, data]);
+
   const share = () => {
     if (!data) return;
     const titles = [...cut].map((id) => data.events.find((e) => e.id === id)?.title ?? id);
@@ -227,7 +327,7 @@ export default function App() {
     a.href = url;
     a.download = "what-moved-nifty.png";
     a.click();
-    navigator.clipboard?.writeText(location.href).catch(() => {});
+    navigator.clipboard?.writeText(location.href).then(() => showToast("Image saved · link copied"), () => showToast("Image saved")); 
   };
 
   if (error) return <div className="p-8 text-red-400">Could not load data: {error}</div>;
@@ -275,6 +375,8 @@ export default function App() {
           <Btn onClick={undo} disabled={!history.length} title="Ctrl/Cmd+Z">↶ Undo</Btn>
           <Btn onClick={() => apply(new Set())} disabled={!nCut}>Restore all</Btn>
           <Sep />
+          <Btn active={panel === "scenarios"} onClick={() => setPanel(panel === "scenarios" ? "none" : "scenarios")}>✂ What if…</Btn>
+          <Btn onClick={() => setSearchOpen(true)} title="Search events (Ctrl/Cmd+K or /)">⌕ Search</Btn>
           <Btn active={panel === "board"} onClick={() => setPanel(panel === "board" ? "none" : "board")}>Leaderboard</Btn>
           <Btn active={panel === "explore"} onClick={() => setPanel(panel === "explore" ? "none" : "explore")}>Explore</Btn>
           <Sep />
@@ -342,16 +444,33 @@ export default function App() {
         </div>
         {stat && (
           <div className="text-2xl font-semibold tabular-nums text-cyan-300 sm:text-3xl">
-            {Math.round(stat.cf).toLocaleString()}{" "}
+            {Math.round(nCut ? cfShown : stat.actual).toLocaleString()}{" "}
             {nCut > 0 && (
               <span className="text-base text-zinc-200">
-                ({stat.pct >= 0 ? "+" : ""}
-                {(stat.pct * 100).toFixed(1)}%) <span className="text-sm text-zinc-400">±{(stat.pm * 100).toFixed(1)}%</span>
+                ({pctShown >= 0 ? "+" : ""}
+                {(pctShown * 100).toFixed(1)}%) <span className="text-sm text-zinc-400">±{(pmShown * 100).toFixed(1)}%</span>
               </span>
             )}
           </div>
         )}
         {nCut > 0 && stat && <div className="text-[11px] text-zinc-500">vs actual {Math.round(stat.actual).toLocaleString()} · estimate, 95% band</div>}
+        {scenario && scenario.key === cutKey && <div className="mt-0.5 text-[11px] font-medium text-cyan-200">Scenario: {scenario.label}</div>}
+        {contrib.length > 0 && (
+          <div className="pointer-events-auto mt-1.5 max-w-[300px] rounded-lg border border-zinc-800 bg-black/60 p-2 backdrop-blur">
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">Biggest effects removed</div>
+            <ul className="space-y-0.5">
+              {contrib.slice(0, 4).map(({ id, imp }) => (
+                <li key={id}>
+                  <button onClick={() => focusEvent(id)} className="flex w-full items-baseline justify-between gap-2 text-left text-[11px] text-zinc-300 hover:text-white">
+                    <span className="truncate">{data.events.find((e) => e.id === id)?.title}</span>
+                    <span className={`tabular-nums ${imp.car_5d < 0 ? "text-red-400" : "text-green-400"}`}>{pct(imp.car_5d)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {contrib.length > 4 && <div className="mt-0.5 text-[10px] text-zinc-600">+{contrib.length - 4} more</div>}
+          </div>
+        )}
         <LiveBadge quote={quote} last={nifty[nifty.length - 1]} />
       </div>
 
@@ -359,7 +478,15 @@ export default function App() {
       {hint && !selected && nCut === 0 && (
         <div className="pointer-events-auto absolute left-1/2 top-[44%] z-10 w-[min(92%,360px)] -translate-x-1/2 rounded-xl border border-zinc-700 bg-black/80 px-4 py-3 text-center text-xs text-zinc-300 backdrop-blur">
           <div className="mb-1 text-sm font-semibold text-zinc-100">Cut an event, watch NIFTY change</div>
-          Click any glowing node to read it, then press <b className="text-cyan-300">✂ Cut</b>. Or cut a whole category with the chips above.
+          Click any glowing node to read it, then press <b className="text-cyan-300">✂ Cut</b>. Or try a ready-made what-if:
+          <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+            {SCENARIOS.slice(0, 3).map((sc) => (
+              <button key={sc.id} onClick={() => runScenario(sc.ids(data), sc.label)} className="rounded-full border border-cyan-400/60 px-2.5 py-1 text-[11px] text-cyan-200 hover:bg-cyan-400/10">
+                ✂ {sc.label.replace("Cut ", "")}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 text-[10px] text-zinc-500">Tip: press <kbd className="rounded bg-zinc-800 px-1">/</kbd> to search · <kbd className="rounded bg-zinc-800 px-1">←</kbd><kbd className="rounded bg-zinc-800 px-1">→</kbd> browse · <kbd className="rounded bg-zinc-800 px-1">C</kbd> cut</div>
           <button onClick={() => setHint(false)} className="mt-2 block w-full rounded bg-zinc-800 py-1 text-zinc-200 hover:bg-zinc-700">Got it</button>
         </div>
       )}
@@ -371,8 +498,10 @@ export default function App() {
         >
           {panel === "details" && selected ? (
             <SidePanel data={data} id={selected} cut={cut} onToggleCut={toggle} onSelect={select} onClose={() => select(null)} />
+          ) : panel === "scenarios" ? (
+            <ScenarioPanel data={data} cut={cut} onRun={runScenario} />
           ) : panel === "explore" ? (
-            <ExplorePanel data={data} onSelect={(id) => { select(id); nebula.current?.focus(id); }} />
+            <ExplorePanel data={data} onSelect={focusEvent} />
           ) : (
             <>
               <div className="mb-2 flex items-center justify-between">
@@ -383,6 +512,13 @@ export default function App() {
             </>
           )}
         </aside>
+      )}
+
+      {searchOpen && <SearchPalette data={data} onPick={focusEvent} onClose={() => setSearchOpen(false)} />}
+      {toast && (
+        <div className="pointer-events-none absolute bottom-[calc(var(--drawer,0px)+54px)] left-1/2 z-30 -translate-x-1/2 rounded-full border border-zinc-700 bg-zinc-900/95 px-4 py-1.5 text-xs text-zinc-100 shadow-lg" style={{ ["--drawer" as string]: drawer ? (mobile ? "212px" : "262px") : "40px" }}>
+          {toast}
+        </div>
       )}
 
       {/* bottom: scrubber + chart drawer */}
@@ -407,11 +543,27 @@ export default function App() {
           <Btn onClick={() => setDrawer((d) => !d)}>{drawer ? "Hide chart" : "Show chart"}</Btn>
         </div>
         {drawer && (
-          <div className="relative mt-1 h-[150px] sm:h-[200px]">
-            <Chart points={points} cut={cut} impacts={data.impacts} />
-            <div
-              className="pointer-events-none absolute bottom-[18px] top-[6px] w-px border-l border-dashed border-zinc-400"
-              style={{ left: `calc(${CHART_LEFT}px + (100% - ${CHART_LEFT + CHART_RIGHT}px) * ${scrubFrac})` }}
+          <div className="mt-1 h-[150px] sm:h-[200px]">
+            <ChartPane
+              data={data}
+              points={shownPoints}
+              cut={cut}
+              scrubFrac={scrubFrac}
+              selected={selected}
+              onlyMoving={onlyMoving}
+              onScrubTo={(f) => {
+                const t = Date.parse(nifty[0].d) + f * (Date.parse(nifty[nifty.length - 1].d) - Date.parse(nifty[0].d));
+                let lo = 0;
+                let hi = nifty.length - 1;
+                while (lo < hi) {
+                  const m = (lo + hi) >> 1;
+                  if (Date.parse(nifty[m].d) < t) lo = m + 1;
+                  else hi = m;
+                }
+                setPlaying(false);
+                setScrubIdx(lo);
+              }}
+              onSelect={focusEvent}
             />
           </div>
         )}
