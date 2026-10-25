@@ -27,6 +27,18 @@ export default function Methodology() {
         <li>Sector CARs use the same model on NIFTY IT, Bank, Auto, FMCG, Metal, Pharma, Realty and PSU Bank.</li>
       </ul>
 
+      <H>What &ldquo;market-moving&rdquo; means</H>
+      <p className="mt-2">
+        An event is marked <b>market-moving</b> if any of three tests passes: the [-1,+5] NIFTY CAR (|t| &ge; 1.96), the
+        1-day NIFTY abnormal return (|t| &ge; 2.24, a stricter bar because two windows are tested), or a sector&apos;s CAR
+        or 1-day return (|t| &ge; 2.73, a Bonferroni bar because eight sectors are tested). Everything else is shown dim as
+        <i> no detectable market impact</i>. That does not mean the event did not matter: results are measured against
+        emerging markets, so a shock that hit every market alike (a global sell-off, a Fed decision that was fully priced) shows
+        little India-specific effect, and many policy events simply move the index by less than its normal daily noise.
+        Monthly or structural aggregates (record fund flows, index-weight changes) are marked <i>context</i>: they are shown
+        but carry no impact and cannot be cut.
+      </p>
+
       <H>Overlapping events</H>
       <p className="mt-2">
         Events within 5 trading days of each other are chained into a <b>confounded cluster</b>. The cluster&apos;s CAR over

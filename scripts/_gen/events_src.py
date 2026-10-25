@@ -2,8 +2,9 @@
 import json, pathlib
 BS="https://www.business-standard.com/"
 E=[]
-def ev(id,date,title,cat,actor,desc,ch,url,mdate=None,eff=None,note=None,q="press"):
+def ev(id,date,title,cat,actor,desc,ch,url,mdate=None,eff=None,note=None,q="press",kind="event"):
     d=dict(id=id,date=date,title=title,category=cat,actor=actor,description=desc,expected_channel=ch,source_url=url,verified=True,source_quality=q)
+    if kind!="event": d["kind"]=kind
     if mdate: d["market_date"]=mdate
     if eff: d["effective_date"]=eff
     if note: d["notes"]=note
@@ -102,6 +103,28 @@ ev("india-mauritius-dtaa-protocol-2024-03-07","2024-03-07","India-Mauritius tax 
 ev("sebi-expiry-day-swap-2025-09-01","2025-09-01","NSE/BSE weekly expiry days swapped to Tuesday/Thursday","govt_regulation","SEBI / NSE / BSE","Under SEBI's late-May 2025 circular all equity-derivative expiries must fall on Tue or Thu; NSE moved Thu->Tue, BSE Tue->Thu effective Sep 1. Aims to curb expiry-day speculation.",["fno_volumes","broker_stocks","exchange_stocks"],BS+"amp/markets/news/nse-bids-adieu-to-thursday-expiry-as-dates-swap-come-into-effect-explained-125082800635_1.html",eff="2025-09-01",note="Date is the effective date; circular date (late May) not pinned down. Index reaction not sourced.")
 ev("fed-cut-2025-12-10","2025-12-10","Fed cuts 25 bps to 3.50-3.75%, hints at pause","global_rates","US Federal Reserve","Dec 11: Sensex +427 (+0.51%) to 84,818, Nifty +0.55% to 25,899; Dec 12 Sensex +450 to 85,268. Rupee hit ~90.56 amid FPI selling.",["us_yields","fpi_flows","rupee"],BS+"amp/markets/news/equity-markets-gain-on-fed-cut-trim-weekly-losses-125121201098_1.html",mdate="2025-12-11",note="Overlaps the Dec 5 RBI cut and the rupee break.")
 ev("msci-india-weight-slide-2026-05","2026-05-31","India's MSCI EM weight falls to ~12% as Taiwan and Korea surge on AI chips","ai_rotation","Global allocators / MSCI","India's weight fell from ~20-21% (mid/Sep 2024) to ~11-12% (May 2026), from #2 to #4 behind Taiwan, China and Korea; attributed to AI-semiconductor exposure India lacks.",["fpi_flows","valuation","ai_capex"],"https://www.ssga.com/library-content/assets/pdf/global/wmu/2026/mom-20260615.pdf",q="secondary",note="Slow-moving structural trend, not a day-shock; use as an annotation rather than an event-study node. Exact weights differ between sources (UPSC explainers vs State Street); confirm from MSCI factsheets. Replaces the unverified 1.73x->1.30x premium seed.")
+
+# ---- audit fixes (see scripts/audit_events.py) ----
+CONTEXT = {"fpi-record-outflow-2024-10","dii-record-inflow-2024-10","fpi-exodus-2026-01","fpi-record-outflow-2026-03","msci-india-weight-slide-2026-05"}
+for e in E:
+    if e["id"] in CONTEXT:
+        e["kind"]="context"
+        e["notes"]=(e.get("notes","")+" Monthly/structural aggregate: shown for context, not a dated shock, so it carries no measured impact and cannot be cut.").strip()
+    if e["id"]=="accenture-guidance-cut-2026-06-19":
+        e.update(date="2026-06-18",market_date="2026-06-19",title="Accenture narrows FY26 outlook, bookings weak: Nifty IT ~-6%",
+                 source_url="https://newsroom.accenture.com/news/2026/accenture-reports-third-quarter-fiscal-2026-results",source_quality="primary",
+                 description="Accenture's Q3 FY26 results (Jun 18): FY26 revenue growth narrowed to 3-4% in local currency, bookings -2% y/y. Press reports Nifty IT fell nearly 6% on Jun 19 (Infosys -8%, TCS -6%).",
+                 notes="Results/outlook from Accenture's own release (primary); the Indian IT move is from a secondary report and the Jun 19 close is unconfirmed.")
+    if e["id"]=="us-iran-war-shock-2026-03-02":
+        e.update(date="2026-02-28",market_date="2026-03-02",
+                 source_url="https://www.outlookbusiness.com/markets/nifty-sensex-plunge-as-usisrael-strike-on-iran-sparks-oil-shock-risk-off-rout",
+                 description="US-Israeli strikes on Iran began Feb 28 (weekend); Mar 2 open: Sensex -3.4% intraday, Nifty ~-2.1%, oil +7% to ~$82, rupee ~91.2 as Hormuz navigation was closed. Nifty closed 22,512 on Mar 23.",
+                 notes="Strike date from press (weekend before the Mar 2 open); monthly decline is an outcome, not a separate event.")
+    if e["id"]=="us-sanctions-rosneft-lukoil-2025-10-22":
+        e.update(source_url="https://content.govdelivery.com/accounts/USTREAS/bulletins/3f8422d",source_quality="primary",
+                 notes="Sanctions date and scope from the US Treasury release (primary); Brent/Reliance figures from press. Indian index reaction not sourced.")
+    if e["id"]=="sanctioning-russia-iran-act-2026-09-18":
+        e["notes"]="Signed Sep 18 per the White House date (some outlets say Sep 19). Law is named after the late Sen. Lindsey Graham. Market reaction not sourced."
 
 E.sort(key=lambda e:(e["date"],e["id"]))
 ids=[e["id"] for e in E]; assert len(ids)==len(set(ids))

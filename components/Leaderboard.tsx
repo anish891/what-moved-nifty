@@ -18,7 +18,7 @@ export default function Leaderboard({ data, cut, onSelect }: Props) {
       data.events
         .filter((e) => data.impacts[e.id])
         .map((e) => ({ e, i: data.impacts[e.id] }))
-        .filter((r) => !sigOnly || r.i.significant)
+        .filter((r) => !r.i.context && (!sigOnly || r.i.market_moving))
         .sort((a, b) => Math.abs(b.i[by] ?? 0) - Math.abs(a.i[by] ?? 0))
         .slice(0, 40),
     [data, sigOnly, by],
@@ -39,7 +39,7 @@ export default function Leaderboard({ data, cut, onSelect }: Props) {
         </div>
         <label className="flex items-center gap-1 text-zinc-400">
           <input type="checkbox" checked={sigOnly} onChange={(e) => setSigOnly(e.target.checked)} />
-          significant only
+          market-moving only
         </label>
       </div>
       <ol className="space-y-0.5">
@@ -51,7 +51,7 @@ export default function Leaderboard({ data, cut, onSelect }: Props) {
             >
               <span className="w-5 text-zinc-600">{k + 1}</span>
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: CATEGORIES[e.category].color }} />
-              <span className={`flex-1 truncate ${i.significant ? "text-zinc-200" : "text-zinc-500"}`}>{e.title}</span>
+              <span className={`flex-1 truncate ${i.market_moving ? "text-zinc-200" : "text-zinc-500"}`}>{e.title}</span>
               <span className={`w-14 text-right tabular-nums ${(i[by] ?? 0) < 0 ? "text-red-400" : "text-green-400"}`}>
                 {pct(i[by])}
               </span>
@@ -59,7 +59,7 @@ export default function Leaderboard({ data, cut, onSelect }: Props) {
           </li>
         ))}
       </ol>
-      <p className="text-[10px] text-zinc-600">Dim titles are not significant at 5%. Estimates, not proof.</p>
+      <p className="text-[10px] text-zinc-600">Dim titles show no detectable market impact. Estimates, not proof.</p>
     </div>
   );
 }

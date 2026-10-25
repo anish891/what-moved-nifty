@@ -31,6 +31,8 @@ OUT = ROOT / "public" / "data"
 EST_LEN, EST_GAP = 250, 10
 START = "2021-01-01"  # published range; earlier data is still used for estimation windows
 WINDOWS = {"1d": (0, 0), "5d": (-1, 5), "20d": (-1, 20), "60d": (0, 60)}
+SECTOR_T = 2.73  # |t| bar for one of 8 sector tests (Bonferroni at 5%)
+INDEX_T1 = 2.24  # |t| bar for the 1-day index test (two windows tested)
 SECTORS = ["nifty_it", "nifty_bank", "nifty_auto", "nifty_fmcg", "nifty_metal",
            "nifty_pharma", "nifty_realty", "nifty_psubank"]
 CLUSTER_GAP = 5  # trading days
@@ -110,6 +112,7 @@ def main():
     idx = ret.index
     events = json.loads((OUT / "events.json").read_text())
     excl = patches["exclude_events"]
+    ctx = {e["id"]: e.get("kind") == "context" for e in events}
 
     sector_ret = {s: np.log(load(s)).diff().reindex(idx) for s in SECTORS}
 
@@ -156,6 +159,7 @@ def main():
                     if w is not None:
                         w = w + ("partial",)
                 out[k] = w
+            out["_ar"], out["_sigma"] = ar, sigma
             res[name] = out
         for _, r in g.iterrows():
             nf = res.get("nifty")
@@ -169,19 +173,39 @@ def main():
                 return {"car": simple(car / n), "ci_low": simple(lo / n), "ci_high": simple(hi / n),
                         "tstat": float(t), "days": int(L), "partial": len(w) > 5}
 
-            p1, p5, p20, p60 = pack(nf["1d"]), pack(nf["5d"]), pack(nf["20d"]), pack(nf["60d"])
+            def own_day(name):
+                """1-day AR on this event's own reaction day (not split across a cluster)."""
+                o = res.get(name)
+                return car_window(o["_ar"], 0, 0, o["_sigma"], int(r.pos), tol=1) if o else None
+
+            w1 = own_day("nifty")
+            p1 = None
+            if w1:
+                p1 = {"car": simple(w1[0]), "ci_low": simple(w1[1]), "ci_high": simple(w1[2]), "tstat": float(w1[3])}
+            p5, p20, p60 = pack(nf["5d"]), pack(nf["20d"]), pack(nf["60d"])
             sectors = {}
+            sector_moving = []
             for s in SECTORS:
                 sw = res.get(s, {}).get("5d")
                 if sw:
                     car, lo, hi, t, L = sw[:5]
-                    sectors[s.replace("nifty_", "")] = {"car": simple(car / n), "ci_low": simple(lo / n),
-                                                          "ci_high": simple(hi / n)}
+                    key = s.replace("nifty_", "")
+                    d1 = own_day(s)
+                    sectors[key] = {"car": simple(car / n), "ci_low": simple(lo / n), "ci_high": simple(hi / n),
+                                    "t": float(t), "car_1d": simple(d1[0]) if d1 else None,
+                                    "t_1d": float(d1[3]) if d1 else None}
+                    if abs(t) >= SECTOR_T or (d1 and abs(d1[3]) >= SECTOR_T):
+                        sector_moving.append(key)
             impacts[r["id"]] = {
                 "id": r["id"],
                 "t0": str(r.t0.date()),
                 "car_1d": p1["car"] if p1 else None, "car_5d": p5["car"], "car_20d": p20["car"] if p20 else None,
                 "car_60d": p60["car"] if p60 else None,
+                "tstat_1d": p1["tstat"] if p1 else None,
+                "significant_1d": bool(p1 and abs(p1["tstat"]) >= INDEX_T1),
+                "sector_moving": sector_moving,
+                "market_moving": bool(abs(p5["tstat"]) >= 1.96 or (p1 and abs(p1["tstat"]) >= INDEX_T1) or sector_moving),
+                "context": bool(ctx.get(r["id"])),
                 "ci_low": p5["ci_low"], "ci_high": p5["ci_high"],
                 "tstat": p5["tstat"],
                 "significant": bool(abs(p5["tstat"]) >= 1.96),

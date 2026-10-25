@@ -34,7 +34,7 @@ export default function EventsTable() {
             <tr>
               <th className="py-1 pr-3">Date</th><th className="pr-3">Event</th><th className="pr-3">Category</th>
               <th className="pr-3 text-right">CAR [-1,+5]</th><th className="pr-3 text-right">1-day AR</th>
-              <th className="pr-3">Sig.</th><th>Source</th>
+              <th className="pr-3">Signal</th><th>Source</th>
             </tr>
           </thead>
           <tbody>
@@ -49,11 +49,14 @@ export default function EventsTable() {
                   </td>
                   <td className="pr-3 whitespace-nowrap" style={{ color: CATEGORIES[e.category].color }}>{CATEGORIES[e.category].label}</td>
                   <td className={`pr-3 text-right tabular-nums ${i && i.car_5d < 0 ? "text-red-400" : "text-green-400"}`}>
-                    {i ? pct(i.car_5d) : "n/a"}
-                    {i && <div className="text-[10px] text-zinc-600">[{pct(i.ci_low)}, {pct(i.ci_high)}]</div>}
+                    {i && !i.context ? pct(i.car_5d) : "–"}
+                    {i && !i.context && <div className="text-[10px] text-zinc-600">[{pct(i.ci_low)}, {pct(i.ci_high)}]</div>}
                   </td>
-                  <td className="pr-3 text-right tabular-nums">{i ? pct(i.car_1d) : "n/a"}</td>
-                  <td className="pr-3">{i ? (i.significant ? "yes" : "no") : "–"}{i && i.cluster_size > 1 ? ` · cl${i.cluster_size}` : ""}</td>
+                  <td className="pr-3 text-right tabular-nums">{i && !i.context ? pct(i.car_1d) : "–"}</td>
+                  <td className="pr-3 whitespace-nowrap">
+                    {!i ? "–" : i.context ? <span className="text-zinc-500">context</span> : i.market_moving ? <span className="text-emerald-300">● moving</span> : <span className="text-zinc-500">○ none</span>}
+                    {i && i.cluster_size > 1 ? <span className="text-zinc-600"> · cl{i.cluster_size}</span> : null}
+                  </td>
                   <td><a href={e.source_url} target="_blank" rel="noreferrer" className="text-cyan-400 underline">{e.source_quality}</a></td>
                 </tr>
               );

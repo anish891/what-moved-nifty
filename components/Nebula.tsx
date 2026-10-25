@@ -24,6 +24,7 @@ interface Props {
   gap: number; // counterfactual / actual - 1, drives NIFTY brightness
   mobile: boolean;
   quality: Quality;
+  onlyMoving: boolean; // hide events with no detectable market impact
   showAll: boolean; // draw the dense same-channel / co-moved edges for every node
   width?: number;
   height?: number;
@@ -125,12 +126,12 @@ function tooltip(n: N, data: AppData): string {
   return `<div style="background:rgba(10,10,14,.92);border:1px solid #27272a;border-radius:8px;padding:8px 10px;max-width:260px;color:#e5e7eb;font-size:12px">
     <div style="font-weight:600;margin-bottom:2px">${n.label}</div>
     <div style="color:#9ca3af;font-size:11px">${n.date} · <span style="color:${cat.color}">${cat.label}</span></div>
-    <div style="margin:4px 0">CAR[-1,+5] <b>${pct(imp.car_5d)}</b> [${pct(imp.ci_low)}, ${pct(imp.ci_high)}] · 1-day AR <b>${pct(imp.car_1d)}</b>${imp.significant ? "" : ' · <span style="color:#9ca3af">not significant</span>'}</div>
+    ${imp.context ? '<div style="margin:4px 0;color:#9ca3af">Context only: a monthly/structural aggregate, no measured impact</div>' : `<div style="margin:4px 0">CAR[-1,+5] <b>${pct(imp.car_5d)}</b> [${pct(imp.ci_low)}, ${pct(imp.ci_high)}] · 1-day AR <b>${pct(imp.car_1d)}</b><br/><span style="color:${imp.market_moving ? "#4ade80" : "#9ca3af"}">${imp.market_moving ? "● market-moving" : "○ no detectable market impact"}</span></div>`}
     ${bars}</div>`;
 }
 
 function NebulaImpl({
-  apiRef, data, cut, visDate, selected, gap, mobile, quality, showAll, width, height, onSelect, onAutoLow,
+  apiRef, data, cut, visDate, selected, gap, mobile, quality, showAll, onlyMoving, width, height, onSelect, onAutoLow,
 }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fg = useRef<any>(null);
@@ -149,8 +150,8 @@ function NebulaImpl({
       const imp = data.impacts[n.id];
       let r = 5;
       if (n.kind === "event" && imp) {
-        r = 1.6 + Math.min(Math.abs(imp.car_5d), 0.15) * 60;
-        if (!imp.significant) r *= 0.7;
+        r = imp.context ? 2.6 : 1.6 + Math.min(Math.abs(imp.car_5d), 0.15) * 60;
+        if (!imp.market_moving && !imp.context) r *= 0.7;
       } else if (n.kind === "driver") r = 3;
       return { ...n, r };
     });
@@ -181,8 +182,11 @@ function NebulaImpl({
   nodesRef.current = graph.nodes;
 
   const stableVisible = useMemo(
-    () => (n: N) => !cut.has(n.id) && !(n.kind === "event" && n.date! > visDate),
-    [cut, visDate],
+    () => (n: N) =>
+      !cut.has(n.id) &&
+      !(n.kind === "event" && n.date! > visDate) &&
+      !(onlyMoving && n.kind === "event" && !data.impacts[n.id]?.market_moving),
+    [cut, visDate, onlyMoving, data],
   );
 
   const linkVisible = useCallback(
@@ -205,10 +209,10 @@ function NebulaImpl({
       let haloA = 0.3;
       if (n.kind === "event") {
         const imp = data.impacts[n.id];
-        color = CATEGORIES[n.category!].color;
-        opacity = imp.significant ? 1 : 0.4;
-        halo = imp.car_5d < 0 ? "#ef4444" : "#22c55e";
-        haloA = 0.5 * opacity;
+        color = imp.context ? "#94a3b8" : CATEGORIES[n.category!].color;
+        opacity = imp.market_moving || imp.context ? 1 : 0.4;
+        halo = imp.context ? "#64748b" : imp.car_5d < 0 ? "#ef4444" : "#22c55e";
+        haloA = imp.context ? 0.12 : 0.5 * opacity;
       } else if (n.kind === "driver") {
         color = "#fde68a";
         halo = "#f59e0b";

@@ -93,18 +93,18 @@ export default function SidePanel({ data, id, cut, onToggleCut, onSelect, onClos
       </div>
       <p className="text-sm text-zinc-300">{ev.description}</p>
 
-      <div className="grid grid-cols-2 gap-1.5">
+      {imp.context ? (
+        <p className="rounded-md border border-zinc-700 bg-zinc-900/60 p-2 text-xs text-zinc-300">
+          Context only: a monthly or structural aggregate, not a dated shock. It carries no measured impact and cannot be cut.
+        </p>
+      ) : null}
+      <div className={imp.context ? "hidden" : "grid grid-cols-2 gap-1.5"}>
         <Stat label="CAR [-1,+5] (headline)" value={pct(imp.car_5d)} sub={`95% CI ${pct(imp.ci_low)} to ${pct(imp.ci_high)}`} />
         <Stat label="1-day abnormal return" value={pct(imp.car_1d)} sub="reaction day only" />
         <Stat label="CAR [-1,+20]" value={pct(imp.car_20d)} />
         <Stat label="CAR [0,+60]" value={pct(imp.car_60d)} sub={imp.car_60d_partial ? "partial window" : undefined} />
       </div>
-      <div className="text-xs text-zinc-400">
-        t-stat {imp.tstat.toFixed(1)} ·{" "}
-        <span className={imp.significant ? "text-green-400" : "text-amber-400"}>
-          {imp.significant ? "significant at 5%" : "not significant (|t| < 1.96)"}
-        </span>
-      </div>
+      <SignalBadge imp={imp} />
       {imp.cluster_size > 1 && (
         <p className="rounded-md border border-amber-900/60 bg-amber-950/30 p-2 text-xs text-amber-200">
           Confounded cluster of {imp.cluster_size}: the cluster&apos;s abnormal return is split equally between members, so
@@ -114,11 +114,11 @@ export default function SidePanel({ data, id, cut, onToggleCut, onSelect, onClos
 
       {sectors.length > 0 && (
         <div>
-          <div className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">Sector CAR [-1,+5]</div>
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">Sector CAR [-1,+5] <span className="normal-case text-zinc-600">· ● = significant (|t| ≥ 2.73)</span></div>
           <div className="space-y-0.5">
             {sectors.map(([s, v]) => (
               <div key={s} className="flex items-center gap-2 text-[11px]">
-                <span className="w-14 text-zinc-400">{s}</span>
+                <span className={`w-14 ${imp.sector_moving.includes(s) ? "font-semibold text-zinc-100" : "text-zinc-400"}`}>{s}{imp.sector_moving.includes(s) ? " ●" : ""}</span>
                 <div className="relative h-2 flex-1 rounded bg-zinc-900">
                   <div
                     className="absolute top-0 h-2 rounded"
@@ -138,11 +138,12 @@ export default function SidePanel({ data, id, cut, onToggleCut, onSelect, onClos
 
       <button
         onClick={() => onToggleCut(id)}
-        className={`w-full rounded-md px-3 py-2 text-sm font-semibold transition ${
+        disabled={imp.context}
+        className={`w-full rounded-md px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-30 ${
           isCut ? "bg-zinc-800 text-zinc-200 hover:bg-zinc-700" : "bg-cyan-400 text-black hover:bg-cyan-300"
         }`}
       >
-        {isCut ? "↺ RESTORE THIS EVENT" : "✂ CUT THIS EVENT"}
+        {imp.context ? "Context only: cannot be cut" : isCut ? "↺ RESTORE THIS EVENT" : "✂ CUT THIS EVENT"}
       </button>
 
       <div className="text-xs">
@@ -170,6 +171,24 @@ export default function SidePanel({ data, id, cut, onToggleCut, onSelect, onClos
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+function SignalBadge({ imp }: { imp: AppData["impacts"][string] }) {
+  if (imp.context) return null;
+  const why: string[] = [];
+  if (imp.significant) why.push(`[-1,+5] CAR significant (t ${imp.tstat.toFixed(1)})`);
+  if (imp.significant_1d && imp.tstat_1d != null) why.push(`1-day move significant (t ${imp.tstat_1d.toFixed(1)})`);
+  if (imp.sector_moving.length) why.push(`sector: ${imp.sector_moving.join(", ")}`);
+  return (
+    <div className={`rounded-md border p-2 text-xs ${imp.market_moving ? "border-emerald-900/70 bg-emerald-950/30 text-emerald-200" : "border-zinc-800 bg-zinc-900/50 text-zinc-400"}`}>
+      <div className="font-semibold">{imp.market_moving ? "● Market-moving" : "○ No detectable market impact"}</div>
+      <div className="mt-0.5 text-[11px] opacity-80">
+        {imp.market_moving
+          ? why.join(" · ")
+          : `t ${imp.tstat.toFixed(1)} on the 5-day CAR, ${imp.tstat_1d != null ? imp.tstat_1d.toFixed(1) : "–"} on the day. Measured against emerging markets, so shocks that hit every market equally show little India-specific effect.`}
+      </div>
     </div>
   );
 }

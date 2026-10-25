@@ -629,7 +629,8 @@
   "source_url": "https://www.business-standard.com/amp/markets/news/dii-buying-streak-25-months-mutual-funds-sip-flows-fpi-selling-125090100228_1.html",
   "verified": true,
   "source_quality": "press",
-  "notes": "Counterweight node; same month as the FPI record."
+  "notes": "Counterweight node; same month as the FPI record. Monthly/structural aggregate: shown for context, not a dated shock, so it carries no measured impact and cannot be cut.",
+  "kind": "context"
  },
  {
   "id": "fpi-record-outflow-2024-10",
@@ -645,7 +646,8 @@
   "source_url": "https://www.businesstoday.in/markets/market-perspective/story/fpis-pull-out-record-rs-94000-crore-from-equities-in-october-on-attractive-china-valuation-452355-2024-11-03",
   "verified": true,
   "source_quality": "press",
-  "notes": "Monthly aggregate; event-study window is the month, not a single day."
+  "notes": "Monthly aggregate; event-study window is the month, not a single day. Monthly/structural aggregate: shown for context, not a dated shock, so it carries no measured impact and cannot be cut.",
+  "kind": "context"
  },
  {
   "id": "adani-us-indictment-2024-11-21",
@@ -1031,11 +1033,11 @@
    "refiners",
    "rupee"
   ],
-  "source_url": "https://www.tbsnews.net/node/1267781",
+  "source_url": "https://content.govdelivery.com/accounts/USTREAS/bulletins/3f8422d",
   "verified": true,
-  "source_quality": "press",
+  "source_quality": "primary",
   "market_date": "2025-10-23",
-  "notes": "Announcement date inferred from the Oct 23 price move; confirm."
+  "notes": "Sanctions date and scope from the US Treasury release (primary); Brent/Reliance figures from press. Indian index reaction not sourced."
  },
  {
   "id": "fed-cut-powell-caution-2025-10-29",
@@ -1136,7 +1138,8 @@
   "source_url": "https://www.business-standard.com/markets/news/markets-slide-on-fpi-exodus-as-earnings-trade-deal-progress-disappoint-126012301247_1.html",
   "verified": true,
   "source_quality": "press",
-  "notes": "Monthly aggregate; ends right before the Feb 1 Budget."
+  "notes": "Monthly aggregate; ends right before the Feb 1 Budget. Monthly/structural aggregate: shown for context, not a dated shock, so it carries no measured impact and cannot be cut.",
+  "kind": "context"
  },
  {
   "id": "budget-2026-stt-hike",
@@ -1223,21 +1226,22 @@
  },
  {
   "id": "us-iran-war-shock-2026-03-02",
-  "date": "2026-03-02",
+  "date": "2026-02-28",
   "title": "US-Iran conflict: Hormuz disruption, gap-down open",
   "category": "geopolitics",
   "actor": "US / Iran",
-  "description": "Markets gapped down on joint military action, retaliation and blocked shipping routes; Nifty closed 22,512 on Mar 23; Brent topped $100 in March. Nifty fell ~9.4-11.3% in March depending on dates.",
+  "description": "US-Israeli strikes on Iran began Feb 28 (weekend); Mar 2 open: Sensex -3.4% intraday, Nifty ~-2.1%, oil +7% to ~$82, rupee ~91.2 as Hormuz navigation was closed. Nifty closed 22,512 on Mar 23.",
   "expected_channel": [
    "oil",
    "rupee",
    "fpi_flows",
    "vix"
   ],
-  "source_url": "https://oga-prod.angelone.in/news/market-updates/gift-nifty-today-sensex-and-nifty-set-for-massive-gap-down-amid-iran-tensions",
+  "source_url": "https://www.outlookbusiness.com/markets/nifty-sensex-plunge-as-usisrael-strike-on-iran-sparks-oil-shock-risk-off-rout",
   "verified": true,
   "source_quality": "secondary",
-  "notes": "Conflict start date and Mar 2 close not confirmed from a primary report; monthly decline is an outcome, not a separate event."
+  "notes": "Strike date from press (weekend before the Mar 2 open); monthly decline is an outcome, not a separate event.",
+  "market_date": "2026-03-02"
  },
  {
   "id": "fpi-record-outflow-2026-03",
@@ -1253,7 +1257,8 @@
   "source_url": "https://thewire.in/economy/fpi-outflows-highest-in-34-years-march-sees-rs-1-18-trillion-sell-off-in-wake-of-west-asia-crisis",
   "verified": true,
   "source_quality": "press",
-  "notes": "Monthly aggregate. Overlaps the US-Iran node: confounded."
+  "notes": "Monthly aggregate. Overlaps the US-Iran node: confounded. Monthly/structural aggregate: shown for context, not a dated shock, so it carries no measured impact and cannot be cut.",
+  "kind": "context"
  },
  {
   "id": "msci-india-weight-slide-2026-05",
@@ -1270,23 +1275,25 @@
   "source_url": "https://www.ssga.com/library-content/assets/pdf/global/wmu/2026/mom-20260615.pdf",
   "verified": true,
   "source_quality": "secondary",
-  "notes": "Slow-moving structural trend, not a day-shock; use as an annotation rather than an event-study node. Exact weights differ between sources (UPSC explainers vs State Street); confirm from MSCI factsheets. Replaces the unverified 1.73x->1.30x premium seed."
+  "notes": "Slow-moving structural trend, not a day-shock; use as an annotation rather than an event-study node. Exact weights differ between sources (UPSC explainers vs State Street); confirm from MSCI factsheets. Replaces the unverified 1.73x->1.30x premium seed. Monthly/structural aggregate: shown for context, not a dated shock, so it carries no measured impact and cannot be cut.",
+  "kind": "context"
  },
  {
   "id": "accenture-guidance-cut-2026-06-19",
-  "date": "2026-06-19",
-  "title": "Accenture guidance cut: Nifty IT ~-6%",
+  "date": "2026-06-18",
+  "title": "Accenture narrows FY26 outlook, bookings weak: Nifty IT ~-6%",
   "category": "corporate_shock",
   "actor": "Accenture",
-  "description": "Nifty IT fell nearly 6% early (Infosys -8%, TCS -6%) to a low since Apr 2023 as Accenture shares dropped >17% on a lower outlook.",
+  "description": "Accenture's Q3 FY26 results (Jun 18): FY26 revenue growth narrowed to 3-4% in local currency, bookings -2% y/y. Press reports Nifty IT fell nearly 6% on Jun 19 (Infosys -8%, TCS -6%).",
   "expected_channel": [
    "it_stocks",
    "ai_disruption"
   ],
-  "source_url": "https://www.outlookmoney.com/invest/it-stocks-today-nifty-it-sinks-6-as-accenture-guidance-cut-triggers-sell-off-in-infosys-tcs-hcl-tech",
+  "source_url": "https://newsroom.accenture.com/news/2026/accenture-reports-third-quarter-fiscal-2026-results",
   "verified": true,
-  "source_quality": "secondary",
-  "notes": "Search snippets mix guidance wording across years; confirm exact guidance and close."
+  "source_quality": "primary",
+  "notes": "Results/outlook from Accenture's own release (primary); the Indian IT move is from a secondary report and the Jun 19 close is unconfirmed.",
+  "market_date": "2026-06-19"
  },
  {
   "id": "brent-above-100-2026-07-24",
@@ -1320,6 +1327,6 @@
   "source_url": "https://www.outlookindia.com/international/trump-signs-russia-sanctions-bill-india-and-china-face-100-tariff-threat",
   "verified": true,
   "source_quality": "press",
-  "notes": "Market reaction not yet sourced. 30-day tariff window from the seed is unverified."
+  "notes": "Signed Sep 18 per the White House date (some outlets say Sep 19). Law is named after the late Sen. Lindsey Graham. Market reaction not sourced."
  }
 ]

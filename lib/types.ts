@@ -26,12 +26,16 @@ export interface MarketEvent {
   verified: boolean;
   source_quality: "primary" | "press" | "secondary";
   notes?: string;
+  kind?: "event" | "context";
 }
 
 export interface SectorImpact {
   car: number;
   ci_low: number;
   ci_high: number;
+  t?: number; // 5-day t-stat
+  car_1d?: number | null;
+  t_1d?: number | null;
 }
 
 /** CARs are simple returns (fractions): -0.021 = -2.1%. */
@@ -46,7 +50,12 @@ export interface EventImpact {
   ci_low: number; // 95% CI for car_5d
   ci_high: number;
   tstat: number;
-  significant: boolean;
+  significant: boolean; // |t| >= 1.96 on the [-1,+5] index CAR
+  tstat_1d: number | null;
+  significant_1d: boolean; // |t| >= 2.24 on the 1-day index AR
+  sector_moving: string[]; // sectors with |t| >= 2.73 (1-day or 5-day)
+  market_moving: boolean; // any of the three tests
+  context: boolean; // aggregate/structural item: no measured impact is applied
   cluster_size: number;
   confounded_with: string[];
   sectors: Record<string, SectorImpact>;

@@ -14,7 +14,7 @@ export function computeCounterfactual(
 ): CounterfactualPoint[] {
   const cuts = [...cutIds]
     .map((id) => impacts[id])
-    .filter(Boolean)
+    .filter((imp) => imp && !imp.context)
     .map((imp) => ({ t0: imp.t0, car: imp.car_5d, half: (imp.ci_high - imp.ci_low) / 2 }))
     .sort((a, b) => a.t0.localeCompare(b.t0));
 

@@ -44,6 +44,8 @@ export default function App() {
   const [quality, setQuality] = useState<Quality>("auto");
   const [autoLow, setAutoLow] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [onlyMoving, setOnlyMoving] = useState(false);
+  const [hint, setHint] = useState(true);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [livePts, setLivePts] = useState<NiftyPoint[]>([]);
   const [quote, setQuote] = useState<LiveQuote | null>(null);
@@ -201,8 +203,12 @@ export default function App() {
 
   const catIds = useMemo(() => {
     const m: Record<string, string[]> = {};
-    data?.events.forEach((e) => data.impacts[e.id] && (m[e.category] ??= []).push(e.id));
+    data?.events.forEach((e) => data.impacts[e.id] && !data.impacts[e.id].context && (m[e.category] ??= []).push(e.id));
     return m;
+  }, [data]);
+  const [movingCount, totalCount] = useMemo(() => {
+    const v = data ? data.events.map((e) => data.impacts[e.id]).filter((i) => i && !i.context) : [];
+    return [v.filter((i) => i.market_moving).length, v.length];
   }, [data]);
 
   const toggleMany = (ids: string[]) => {
@@ -245,6 +251,7 @@ export default function App() {
               mobile={mobile}
               quality={effQuality}
               showAll={showAll}
+              onlyMoving={onlyMoving}
               onAutoLow={onAutoLow}
               onSelect={select}
               width={size.w}
@@ -256,40 +263,40 @@ export default function App() {
       </div>
 
       {/* top bar */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/90 to-transparent px-3 pb-6 pt-2">
-        <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="text-sm font-semibold tracking-wide">WHAT MOVED NIFTY</h1>
-          <button onClick={() => apply(new Set())} disabled={!nCut} className="rounded bg-zinc-800 px-2 py-0.5 text-xs disabled:opacity-40">
-            Restore all
-          </button>
-          <button onClick={undo} disabled={!history.length} className="rounded bg-zinc-800 px-2 py-0.5 text-xs disabled:opacity-40" title="Ctrl/Cmd+Z">
-            Undo
-          </button>
-          <button onClick={() => setPanel(panel === "board" ? "none" : "board")} className="rounded bg-zinc-800 px-2 py-0.5 text-xs">
-            Shock leaderboard
-          </button>
-          <button onClick={() => setPanel(panel === "explore" ? "none" : "explore")} className="rounded bg-zinc-800 px-2 py-0.5 text-xs">
-            Explore
-          </button>
-          <button onClick={() => setShowAll((v) => !v)} className={`rounded px-2 py-0.5 text-xs ${showAll ? "bg-cyan-400 text-black" : "bg-zinc-800"}`} title="Draw every same-channel and co-moved connection (heavier)">
-            All links
-          </button>
-          <button
-            onClick={() => { setAutoLow(false); setQuality((q) => (q === "auto" ? "low" : q === "low" ? "high" : "auto")); }}
-            className="rounded bg-zinc-800 px-2 py-0.5 text-xs"
-            title="Rendering quality: Auto lowers it if the frame rate is poor"
-          >
-            Quality: {quality === "auto" ? (autoLow ? "Auto (low)" : "Auto") : quality === "low" ? "Low" : "High"}
-          </button>
-          <button onClick={share} className="rounded bg-zinc-800 px-2 py-0.5 text-xs">
-            Share PNG
-          </button>
-          <nav className="ml-auto flex gap-3 text-xs text-zinc-400">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/95 via-black/70 to-transparent px-3 pb-8 pt-2">
+        <div className="pointer-events-auto flex items-center gap-3">
+          <h1 className="text-sm font-semibold tracking-[0.18em]">WHAT MOVED NIFTY</h1>
+          <nav className="ml-auto flex gap-4 text-xs text-zinc-400">
             <Link href="/events" className="hover:text-white">Events</Link>
             <Link href="/methodology" className="hover:text-white">Methodology</Link>
           </nav>
         </div>
-        <div className="pointer-events-auto mt-1.5 flex gap-1 overflow-x-auto pb-1">
+        <div className="pointer-events-auto mt-1.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+          <Btn onClick={undo} disabled={!history.length} title="Ctrl/Cmd+Z">↶ Undo</Btn>
+          <Btn onClick={() => apply(new Set())} disabled={!nCut}>Restore all</Btn>
+          <Sep />
+          <Btn active={panel === "board"} onClick={() => setPanel(panel === "board" ? "none" : "board")}>Leaderboard</Btn>
+          <Btn active={panel === "explore"} onClick={() => setPanel(panel === "explore" ? "none" : "explore")}>Explore</Btn>
+          <Sep />
+          <Btn
+            active={onlyMoving}
+            onClick={() => setOnlyMoving((v) => !v)}
+            title="Hide events with no detectable market impact (see Methodology)"
+          >
+            ● Market-moving only <span className="opacity-60">{movingCount}/{totalCount}</span>
+          </Btn>
+          <Btn active={showAll} onClick={() => setShowAll((v) => !v)} title="Draw every same-channel and co-moved connection (heavier)">
+            All links
+          </Btn>
+          <Btn
+            onClick={() => { setAutoLow(false); setQuality((q) => (q === "auto" ? "low" : q === "low" ? "high" : "auto")); }}
+            title="Rendering quality: Auto lowers it if the frame rate is poor"
+          >
+            Quality: {quality === "auto" ? (autoLow ? "Auto (low)" : "Auto") : quality === "low" ? "Low" : "High"}
+          </Btn>
+          <Btn onClick={share}>Share PNG</Btn>
+        </div>
+        <div className="pointer-events-auto mt-1.5 flex gap-1 overflow-x-auto pb-1 [scrollbar-width:none]">
           {GROUPS.map((g) => {
             const ids = g.cats.flatMap((c) => catIds[c] ?? []);
             const on = ids.length > 0 && ids.every((i) => cut.has(i));
@@ -329,12 +336,12 @@ export default function App() {
       </div>
 
       {/* counter */}
-      <div className="pointer-events-none absolute left-3 top-[88px] z-10 max-w-[70%] sm:top-[84px]">
+      <div className="pointer-events-none absolute left-3 top-[106px] z-10 max-w-[70%]">
         <div className="text-[11px] uppercase tracking-wide text-zinc-500">
-          {nCut ? `NIFTY without ${nCut} event${nCut > 1 ? "s" : ""}` : "NIFTY (actual)"}
+          {nCut ? `NIFTY without ${nCut} event${nCut > 1 ? "s" : ""}` : "NIFTY 50 (actual)"}
         </div>
         {stat && (
-          <div className="text-xl font-semibold tabular-nums text-cyan-300 sm:text-2xl">
+          <div className="text-2xl font-semibold tabular-nums text-cyan-300 sm:text-3xl">
             {Math.round(stat.cf).toLocaleString()}{" "}
             {nCut > 0 && (
               <span className="text-base text-zinc-200">
@@ -348,9 +355,20 @@ export default function App() {
         <LiveBadge quote={quote} last={nifty[nifty.length - 1]} />
       </div>
 
+      {/* first-visit hint */}
+      {hint && !selected && nCut === 0 && (
+        <div className="pointer-events-auto absolute left-1/2 top-[44%] z-10 w-[min(92%,360px)] -translate-x-1/2 rounded-xl border border-zinc-700 bg-black/80 px-4 py-3 text-center text-xs text-zinc-300 backdrop-blur">
+          <div className="mb-1 text-sm font-semibold text-zinc-100">Cut an event, watch NIFTY change</div>
+          Click any glowing node to read it, then press <b className="text-cyan-300">✂ Cut</b>. Or cut a whole category with the chips above.
+          <button onClick={() => setHint(false)} className="mt-2 block w-full rounded bg-zinc-800 py-1 text-zinc-200 hover:bg-zinc-700">Got it</button>
+        </div>
+      )}
+
       {/* right panel */}
       {panel !== "none" && (
-        <aside className="absolute bottom-[calc(var(--drawer,0px)+8px)] right-2 top-[120px] z-20 w-[min(340px,calc(100%-16px))] overflow-y-auto rounded-xl border border-zinc-800 bg-black/85 p-3 backdrop-blur">
+        <aside
+          className="absolute bottom-[calc(var(--drawer,0px)+8px)] right-2 z-20 w-[min(340px,calc(100%-16px))] overflow-y-auto rounded-xl border border-zinc-800 bg-black/90 p-3 backdrop-blur max-sm:left-2 max-sm:top-auto max-sm:max-h-[52%] max-sm:w-auto sm:top-[132px]"
+        >
           {panel === "details" && selected ? (
             <SidePanel data={data} id={selected} cut={cut} onToggleCut={toggle} onSelect={select} onClose={() => select(null)} />
           ) : panel === "explore" ? (
@@ -373,9 +391,9 @@ export default function App() {
         style={{ ["--drawer" as string]: drawer ? (mobile ? "212px" : "262px") : "40px" }}
       >
         <div className="flex items-center gap-2">
-          <button onClick={() => { if (scrubIdx >= nifty.length - 1) setScrubIdx(0); setPlaying((p) => !p); }} className="w-12 rounded bg-zinc-800 px-1 py-0.5 text-xs">
-            {playing ? "Pause" : "Play"}
-          </button>
+          <Btn onClick={() => { if (scrubIdx >= nifty.length - 1) setScrubIdx(0); setPlaying((p) => !p); }}>
+            {playing ? "❚❚ Pause" : "▶ Play"}
+          </Btn>
           <input
             type="range"
             min={0}
@@ -385,10 +403,8 @@ export default function App() {
             className="flex-1 accent-cyan-400"
             aria-label="Time scrubber"
           />
-          <span className="w-20 text-right text-xs tabular-nums text-zinc-400">{scrub === "9999-12-31" ? "" : scrub}</span>
-          <button onClick={() => setDrawer((d) => !d)} className="rounded bg-zinc-800 px-2 py-0.5 text-xs">
-            {drawer ? "Hide chart" : "Show chart"}
-          </button>
+          <span className="w-[76px] text-right text-xs tabular-nums text-zinc-400">{scrubIdx >= nifty.length - 1 ? "now" : scrub === "9999-12-31" ? "" : scrub}</span>
+          <Btn onClick={() => setDrawer((d) => !d)}>{drawer ? "Hide chart" : "Show chart"}</Btn>
         </div>
         {drawer && (
           <div className="relative mt-1 h-[150px] sm:h-[200px]">
@@ -399,15 +415,29 @@ export default function App() {
             />
           </div>
         )}
-        <div className="mt-0.5 flex gap-4 text-[10px] text-zinc-500">
+        <div className="mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] text-zinc-500">
           <span><i className="mr-1 inline-block h-0.5 w-3 bg-zinc-200 align-middle" />NIFTY actual</span>
           <span><i className="mr-1 inline-block h-0.5 w-3 bg-cyan-400 align-middle" />without cut events</span>
-          <span>Node size = |CAR [-1,+5]| · halo red/green = negative/positive · dim = not significant</span>
+          <span>Size = |CAR| · red/green halo = down/up · bright = market-moving, dim = no detectable impact · grey = context</span>
         </div>
       </div>
     </div>
   );
 }
+
+function Btn({ children, active, disabled, onClick, title }: { children: React.ReactNode; active?: boolean; disabled?: boolean; onClick?: () => void; title?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`shrink-0 rounded-md px-2.5 py-1 text-xs transition disabled:opacity-35 ${active ? "bg-cyan-400 text-black" : "bg-zinc-800/90 text-zinc-200 hover:bg-zinc-700"}`}
+    >
+      {children}
+    </button>
+  );
+}
+const Sep = () => <span className="mx-0.5 h-4 w-px shrink-0 bg-zinc-700" />;
 
 function history_replace(u: URL) {
   try {
