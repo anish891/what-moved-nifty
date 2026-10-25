@@ -3,7 +3,10 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import BottomSheet from "./BottomSheet";
 import ChartPane from "./ChartPane";
+import LassoOverlay from "./LassoOverlay";
+import SelectionBar from "./SelectionBar";
 import ExplorePanel from "./ExplorePanel";
 import Leaderboard from "./Leaderboard";
 import ScenarioPanel from "./ScenarioPanel";
@@ -16,6 +19,7 @@ import { loadData } from "@/lib/data";
 import { mergeLive, type LiveQuote } from "@/lib/live";
 import { renderShareImage } from "@/lib/share";
 import { SCENARIOS } from "@/lib/scenarios";
+import { loadSaved, scenarioUrl, storeSaved, type SavedScenario } from "@/lib/saved";
 import { useTweenNumber, useTweenProgress } from "@/lib/useTween";
 import { pct } from "@/lib/categories";
 import type { AppData, Category, CounterfactualPoint, NiftyPoint } from "@/lib/types";
@@ -54,6 +58,12 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [scenario, setScenario] = useState<{ label: string; key: string } | null>(null);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [pickMode, setPickMode] = useState(false);
+  const [lasso, setLasso] = useState(false);
+  const [saved, setSaved] = useState<SavedScenario[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveName, setSaveName] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [livePts, setLivePts] = useState<NiftyPoint[]>([]);
@@ -68,12 +78,21 @@ export default function App() {
         setData(d);
         const ids = new Set(d.events.map((e) => e.id));
         const q = new URLSearchParams(location.search).get("cut");
-        if (q) setCut(new Set(q.split(",").filter((x) => ids.has(x))));
+        if (q) {
+          const valid = q.split(",").filter((x) => ids.has(x));
+          setCut(new Set(valid));
+          const nm = new URLSearchParams(location.search).get("name");
+          if (nm && valid.length) setScenario({ label: nm.slice(0, 60), key: [...valid].sort().join(",") });
+        }
         setScrubIdx(d.nifty.length - 1);
       })
       .catch((e) => setError(String(e)));
     setGl(webglOk());
     setMobile(window.innerWidth < 768);
+    setSaved(loadSaved());
+    const onResize = () => setMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   useEffect(() => {
@@ -128,8 +147,10 @@ export default function App() {
     const u = new URL(location.href);
     if (cut.size) u.searchParams.set("cut", [...cut].join(","));
     else u.searchParams.delete("cut");
+    if (scenario && cut.size && scenario.key === [...cut].sort().join(",")) u.searchParams.set("name", scenario.label);
+    else u.searchParams.delete("name");
     history_replace(u);
-  }, [cut, data]);
+  }, [cut, data, scenario]);
 
   const apply = useCallback((next: ReadonlySet<string>) => {
     setCut((prev) => {
@@ -289,6 +310,76 @@ export default function App() {
     [select],
   );
 
+  // ---- multi-select, saved what-ifs, event navigation ----
+  const onPick = useCallback(
+    (id: string) => {
+      if (data?.impacts[id]?.context) return;
+      setHint(false);
+      setPicked((p) => {
+        const n = new Set(p);
+        if (n.has(id)) n.delete(id);
+        else n.add(id);
+        return n;
+      });
+    },
+    [data],
+  );
+  const exitSelect = useCallback(() => {
+    setPickMode(false);
+    setLasso(false);
+    setPicked(new Set());
+  }, []);
+  const onLasso = useCallback(
+    (ids: string[], additive: boolean) => {
+      setPicked((p) => {
+        const n = additive ? new Set(p) : new Set<string>();
+        ids.filter((i) => !data?.impacts[i]?.context).forEach((i) => n.add(i));
+        return n;
+      });
+      if (!ids.length) showToast("No events inside the loop");
+    },
+    [data, showToast],
+  );
+  const persist = useCallback((list: SavedScenario[]) => {
+    setSaved(list);
+    storeSaved(list);
+  }, []);
+  /** Cut the picked events (plus whatever is already cut); optionally save the result under a name and copy its link. */
+  const cutPicked = useCallback(
+    (name?: string) => {
+      const next = new Set([...cut, ...picked]);
+      apply(next);
+      setPicked(new Set());
+      setLasso(false);
+      setPickMode(false);
+      if (name) {
+        const ids = [...next];
+        setScenario({ label: name, key: [...ids].sort().join(",") });
+        persist([{ id: String(Date.now()), name, ids, created: Date.now() }, ...saved.filter((x) => x.name !== name)]);
+        navigator.clipboard?.writeText(scenarioUrl(ids, name)).then(() => showToast(`Saved “${name}” · link copied`), () => showToast(`Saved “${name}”`));
+      } else showToast(`${picked.size} event${picked.size > 1 ? "s" : ""} cut`);
+    },
+    [cut, picked, apply, persist, saved, showToast],
+  );
+  const saveCurrent = useCallback(
+    (name: string) => {
+      const ids = [...cut];
+      setScenario({ label: name, key: [...ids].sort().join(",") });
+      persist([{ id: String(Date.now()), name, ids, created: Date.now() }, ...saved.filter((x) => x.name !== name)]);
+      navigator.clipboard?.writeText(scenarioUrl(ids, name)).then(() => showToast(`Saved “${name}” · link copied`), () => showToast(`Saved “${name}”`));
+    },
+    [cut, persist, saved, showToast],
+  );
+  const nav = useCallback(
+    (dir: 1 | -1) => {
+      if (!selected) return;
+      const i = browse.indexOf(selected);
+      if (i < 0) return;
+      focusEvent(browse[(i + dir + browse.length) % browse.length]);
+    },
+    [selected, browse, focusEvent],
+  );
+
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -304,20 +395,18 @@ export default function App() {
         setSearchOpen(true);
       } else if (e.key === "Escape") {
         if (searchOpen) setSearchOpen(false);
+        else if (lasso || pickMode || picked.size) exitSelect();
         else if (panel !== "none") select(null), setPanel("none");
       } else if (!typing && selected && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
-        const i = browse.indexOf(selected);
-        if (i >= 0) {
-          e.preventDefault();
-          focusEvent(browse[(i + (e.key === "ArrowRight" ? 1 : -1) + browse.length) % browse.length]);
-        }
+        e.preventDefault();
+        nav(e.key === "ArrowRight" ? 1 : -1);
       } else if (!typing && selected && e.key.toLowerCase() === "c" && !e.ctrlKey && !e.metaKey && data && !data.impacts[selected]?.context) {
         toggle(selected);
       }
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, [undo, searchOpen, panel, selected, browse, focusEvent, toggle, select, data]);
+  }, [undo, searchOpen, panel, selected, nav, toggle, select, data, lasso, pickMode, picked, exitSelect]);
 
   const share = () => {
     if (!data) return;
@@ -334,6 +423,31 @@ export default function App() {
   if (!data) return <div className="flex h-full items-center justify-center text-zinc-500">Loading the nebula…</div>;
 
   const nCut = cut.size;
+  const navInfo = selected && browse.includes(selected) ? { i: browse.indexOf(selected) + 1, n: browse.length } : null;
+  const panelBody =
+    panel === "details" && selected ? (
+      <SidePanel data={data} id={selected} cut={cut} onToggleCut={toggle} onSelect={select} onClose={() => select(null)} nav={navInfo ? { ...navInfo, onPrev: () => nav(-1), onNext: () => nav(1) } : undefined} swipeHint={mobile} />
+    ) : panel === "scenarios" ? (
+      <ScenarioPanel
+        data={data}
+        cut={cut}
+        onRun={runScenario}
+        saved={saved}
+        onRunSaved={(sv) => runScenario(sv.ids.filter((i) => i in data.impacts), sv.name)}
+        onDeleteSaved={(id) => persist(saved.filter((x) => x.id !== id))}
+        onCopySaved={(sv) => navigator.clipboard?.writeText(scenarioUrl(sv.ids, sv.name)).then(() => showToast("Link copied"), () => showToast("Copy failed"))}
+      />
+    ) : panel === "explore" ? (
+      <ExplorePanel data={data} onSelect={focusEvent} />
+    ) : (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Shock leaderboard</h2>
+          <button onClick={() => setPanel("none")} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">✕</button>
+        </div>
+        <Leaderboard data={data} cut={cut} onSelect={focusEvent} />
+      </>
+    );
   const gap = stat ? stat.pct : 0;
 
   return (
@@ -352,6 +466,10 @@ export default function App() {
               quality={effQuality}
               showAll={showAll}
               onlyMoving={onlyMoving}
+              picked={picked}
+              pickMode={pickMode}
+              lasso={lasso}
+              onPick={onPick}
               onAutoLow={onAutoLow}
               onSelect={select}
               width={size.w}
@@ -361,6 +479,8 @@ export default function App() {
             <Fallback2D data={data} cut={cut} scrub={scrub} onSelect={select} />
           ))}
       </div>
+
+      {lasso && <LassoOverlay positions={() => nebula.current?.screenPositions() ?? []} onSelect={onLasso} onExit={() => setLasso(false)} />}
 
       {/* top bar */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/95 via-black/70 to-transparent px-3 pb-8 pt-2">
@@ -377,6 +497,8 @@ export default function App() {
           <Sep />
           <Btn active={panel === "scenarios"} onClick={() => setPanel(panel === "scenarios" ? "none" : "scenarios")}>✂ What if…</Btn>
           <Btn onClick={() => setSearchOpen(true)} title="Search events (Ctrl/Cmd+K or /)">⌕ Search</Btn>
+          <Btn active={pickMode} onClick={() => { setPickMode((v) => !v); setLasso(false); setHint(false); }} title="Tap nodes to select several (or Shift-click)">☐ Select</Btn>
+          <Btn active={lasso} onClick={() => { setLasso((v) => !v); setPickMode(false); setHint(false); }} title="Draw a loop to select events">⌇ Lasso</Btn>
           <Btn active={panel === "board"} onClick={() => setPanel(panel === "board" ? "none" : "board")}>Leaderboard</Btn>
           <Btn active={panel === "explore"} onClick={() => setPanel(panel === "explore" ? "none" : "explore")}>Explore</Btn>
           <Sep />
@@ -469,6 +591,22 @@ export default function App() {
               ))}
             </ul>
             {contrib.length > 4 && <div className="mt-0.5 text-[10px] text-zinc-600">+{contrib.length - 4} more</div>}
+            {saving ? (
+              <form
+                className="mt-1.5 flex gap-1"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  saveCurrent(saveName.trim() || "My what-if");
+                  setSaving(false);
+                  setSaveName("");
+                }}
+              >
+                <input autoFocus value={saveName} maxLength={60} onChange={(e) => setSaveName(e.target.value)} placeholder="Name it" className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-[11px] outline-none focus:border-cyan-500" />
+                <button className="rounded bg-cyan-400 px-2 py-0.5 text-[11px] font-semibold text-black">Save</button>
+              </form>
+            ) : (
+              <button onClick={() => setSaving(true)} className="mt-1.5 w-full rounded bg-zinc-800 py-0.5 text-[11px] text-zinc-200 hover:bg-zinc-700">Save &amp; share this what-if…</button>
+            )}
           </div>
         )}
         <LiveBadge quote={quote} last={nifty[nifty.length - 1]} />
@@ -491,29 +629,29 @@ export default function App() {
         </div>
       )}
 
-      {/* right panel */}
-      {panel !== "none" && (
-        <aside
-          className="absolute bottom-[calc(var(--drawer,0px)+8px)] right-2 z-20 w-[min(340px,calc(100%-16px))] overflow-y-auto rounded-xl border border-zinc-800 bg-black/90 p-3 backdrop-blur max-sm:left-2 max-sm:top-auto max-sm:max-h-[52%] max-sm:w-auto sm:top-[132px]"
-        >
-          {panel === "details" && selected ? (
-            <SidePanel data={data} id={selected} cut={cut} onToggleCut={toggle} onSelect={select} onClose={() => select(null)} />
-          ) : panel === "scenarios" ? (
-            <ScenarioPanel data={data} cut={cut} onRun={runScenario} />
-          ) : panel === "explore" ? (
-            <ExplorePanel data={data} onSelect={focusEvent} />
-          ) : (
-            <>
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-sm font-semibold">Shock leaderboard</h2>
-                <button onClick={() => setPanel("none")} className="text-zinc-500 hover:text-zinc-200" aria-label="Close">✕</button>
-              </div>
-              <Leaderboard data={data} cut={cut} onSelect={(id) => { select(id); nebula.current?.focus(id); }} />
-            </>
-          )}
+      {/* panels: bottom sheet on phones, side card on larger screens */}
+      {panel !== "none" && (mobile ? (
+        <BottomSheet onClose={() => { select(null); setPanel("none"); }} onSwipe={panel === "details" ? nav : undefined} resetKey={panel + (selected ?? "")}>
+          {panelBody}
+        </BottomSheet>
+      ) : (
+        <aside className="absolute bottom-[calc(var(--drawer,0px)+8px)] right-2 top-[132px] z-20 w-[340px] overflow-y-auto rounded-xl border border-zinc-800 bg-black/90 p-3 backdrop-blur">
+          {panelBody}
         </aside>
-      )}
+      ))}
 
+      {(picked.size > 0 || pickMode || lasso) && (
+        <div style={{ ["--drawer" as string]: drawer ? (mobile ? "212px" : "262px") : "40px" }}>
+          <SelectionBar
+            count={picked.size}
+            alreadyCut={[...picked].filter((i) => cut.has(i)).length}
+            onCut={() => cutPicked()}
+            onSave={(name) => cutPicked(name)}
+            onClear={() => setPicked(new Set())}
+            onDone={exitSelect}
+          />
+        </div>
+      )}
       {searchOpen && <SearchPalette data={data} onPick={focusEvent} onClose={() => setSearchOpen(false)} />}
       {toast && (
         <div className="pointer-events-none absolute bottom-[calc(var(--drawer,0px)+54px)] left-1/2 z-30 -translate-x-1/2 rounded-full border border-zinc-700 bg-zinc-900/95 px-4 py-1.5 text-xs text-zinc-100 shadow-lg" style={{ ["--drawer" as string]: drawer ? (mobile ? "212px" : "262px") : "40px" }}>

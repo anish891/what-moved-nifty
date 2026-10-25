@@ -13,6 +13,8 @@ export interface NebulaHandle {
   /** Renders a fresh frame and returns the canvas; read it synchronously (drawImage / toDataURL). */
   canvas(): HTMLCanvasElement | null;
   focus(id: string): void;
+  /** Visible nodes projected to CSS pixels relative to the canvas (for lasso selection). */
+  screenPositions(): { id: string; x: number; y: number }[];
 }
 
 interface Props {
@@ -24,6 +26,10 @@ interface Props {
   gap: number; // counterfactual / actual - 1, drives NIFTY brightness
   mobile: boolean;
   quality: Quality;
+  picked: ReadonlySet<string>; // multi-selection (shift-click / pick mode / lasso)
+  pickMode: boolean; // taps toggle picks instead of opening the panel
+  lasso: boolean; // orbit controls are off while the lasso overlay is active
+  onPick(id: string): void;
   onlyMoving: boolean; // hide events with no detectable market impact
   showAll: boolean; // draw the dense same-channel / co-moved edges for every node
   width?: number;
@@ -131,7 +137,7 @@ function tooltip(n: N, data: AppData): string {
 }
 
 function NebulaImpl({
-  apiRef, data, cut, visDate, selected, gap, mobile, quality, showAll, onlyMoving, width, height, onSelect, onAutoLow,
+  apiRef, data, cut, visDate, selected, gap, mobile, quality, showAll, onlyMoving, picked, pickMode, lasso, onPick, width, height, onSelect, onAutoLow,
 }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fg = useRef<any>(null);
@@ -248,6 +254,21 @@ function NebulaImpl({
     focus: (id: string) => {
       const n = nodesRef.current.find((x) => x.id === id);
       if (n && n.x != null) flyTo(n, 90, 1000);
+    },
+    screenPositions: () => {
+      const f = fg.current;
+      if (!f) return [];
+      const cam = f.camera() as THREE.Camera;
+      const el = f.renderer().domElement as HTMLCanvasElement;
+      const v = new THREE.Vector3();
+      const out: { id: string; x: number; y: number }[] = [];
+      for (const n of nodesRef.current) {
+        if (n.kind !== "event" || n.x == null || !n.__threeObj?.visible) continue;
+        v.set(n.x, n.y!, n.z!).project(cam);
+        if (v.z > 1) continue; // behind the camera
+        out.push({ id: n.id, x: ((v.x + 1) / 2) * el.clientWidth, y: ((1 - v.y) / 2) * el.clientHeight });
+      }
+      return out;
     },
   };
 
@@ -445,23 +466,42 @@ function NebulaImpl({
     }
   }, [cut, quality]);
 
-  // selected-node emphasis
+  // selected / picked node emphasis (picked nodes get a bright cyan halo)
   useEffect(() => {
     for (const n of nodesRef.current) {
-      const core = n.__threeObj?.getObjectByName("core");
-      if (core) core.scale.setScalar(n.r * (n.id === selected ? 1.35 : 1));
+      const g = n.__threeObj;
+      const core = g?.getObjectByName("core");
+      const halo = g?.getObjectByName("halo") as THREE.Sprite | undefined;
+      const isPicked = picked.has(n.id);
+      if (core) core.scale.setScalar(n.r * (isPicked ? 1.5 : n.id === selected ? 1.35 : 1));
+      if (halo) {
+        halo.userData.orig ??= halo.material;
+        halo.material = isPicked ? spriteMat("#22d3ee", 0.95) : (halo.userData.orig as THREE.SpriteMaterial);
+        if (isPicked) halo.scale.setScalar(n.r * 6);
+        else if (!flashes.current.has(n.id)) halo.scale.setScalar(n.r * (n.kind === "index" ? 5 : 4));
+      }
     }
-  }, [selected]);
+  }, [selected, picked]);
+
+  // lasso mode: let the overlay own the pointer, not the orbit controls
+  useEffect(() => {
+    const c = fg.current?.controls();
+    if (c) c.enabled = !lasso;
+  }, [lasso]);
 
   const low = quality === "low";
   const nodeLabel = useCallback((n: N) => tooltip(n, data), [data]);
   const onNodeClick = useCallback(
-    (n: N) => {
+    (n: N, ev?: MouseEvent) => {
+      if (n.kind === "event" && (pickMode || ev?.shiftKey)) {
+        onPick(n.id);
+        return;
+      }
       onSelect(n.id);
       if (n.x != null) flyTo(n, 110, 900);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onSelect],
+    [onSelect, onPick, pickMode],
   );
   const onNodeHover = useCallback((n: N | null) => {
     const c = fg.current?.controls();

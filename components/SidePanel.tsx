@@ -10,6 +10,8 @@ interface Props {
   onToggleCut(id: string): void;
   onSelect(id: string): void;
   onClose(): void;
+  nav?: { i: number; n: number; onPrev(): void; onNext(): void };
+  swipeHint?: boolean;
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -22,7 +24,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-export default function SidePanel({ data, id, cut, onToggleCut, onSelect, onClose }: Props) {
+export default function SidePanel({ data, id, cut, onToggleCut, onSelect, onClose, nav, swipeHint }: Props) {
   const node = data.graph.nodes.find((n) => n.id === id);
   if (!node) return null;
   const header = (
@@ -83,6 +85,13 @@ export default function SidePanel({ data, id, cut, onToggleCut, onSelect, onClos
   return (
     <div className="space-y-3">
       {header}
+      {nav && (
+        <div className="flex items-center justify-between text-[11px] text-zinc-500">
+          <button onClick={nav.onPrev} className="rounded bg-zinc-900 px-2 py-0.5 hover:bg-zinc-800" aria-label="Previous event">‹ Prev</button>
+          <span>{swipeHint ? "swipe ‹ › · " : ""}{nav.i} / {nav.n}</span>
+          <button onClick={nav.onNext} className="rounded bg-zinc-900 px-2 py-0.5 hover:bg-zinc-800" aria-label="Next event">Next ›</button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
         <span className="rounded-full px-2 py-0.5 text-black" style={{ background: cat.color }}>
           {cat.label}
